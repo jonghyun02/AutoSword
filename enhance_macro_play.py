@@ -60,6 +60,11 @@ def check_enhancement_result(text):
     if success_match:
         return "success", int(success_match.group(2))  # 강화된 레벨 반환
 
+    # 1-2. 전설 강화 성공 패턴 (예: 전설의 『[+11] 아이템명』 강화에 성공)
+    legend_success_match = re.search(r"전설의 『\[\+(\d+)\] .+』 강화에 성공", text)
+    if legend_success_match:
+        return "success", int(legend_success_match.group(1))
+
     # 2. 유지 패턴
     maintain_match = re.search(r"〖💦강화 유지💦〗", text)
     if maintain_match:
