@@ -4,54 +4,7 @@ import pygetwindow as gw
 import time
 import re
 import sys
-import os
 from datetime import datetime
-
-# 로그 파일 설정
-LOG_DIR = os.path.dirname(__file__)
-LOG_FILE = os.path.join(LOG_DIR, f"enhance_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
-
-class Logger:
-    """print 출력을 콘솔과 파일에 동시에 기록 (100줄마다 파일 저장)"""
-    def __init__(self, filename):
-        self.terminal = sys.stdout
-        self.filename = filename
-        self.buffer = []
-        self.line_count = 0
-        self.FLUSH_INTERVAL = 100
-        
-    def write(self, message):
-        self.terminal.write(message)
-        self.buffer.append(message)
-        
-        # 줄바꿈 카운트
-        self.line_count += message.count('\n')
-        
-        # 100줄마다 파일에 저장
-        if self.line_count >= self.FLUSH_INTERVAL:
-            self._flush_to_file()
-        
-    def _flush_to_file(self):
-        if self.buffer:
-            with open(self.filename, 'a', encoding='utf-8') as f:
-                f.write(''.join(self.buffer))
-            self.buffer = []
-            self.line_count = 0
-        
-    def flush(self):
-        self.terminal.flush()
-        self._flush_to_file()
-
-import atexit
-# 프로그램 종료 시 남은 버퍼 저장
-def _save_remaining_log():
-    if isinstance(sys.stdout, Logger):
-        sys.stdout.flush()
-atexit.register(_save_remaining_log)
-
-# 로거 활성화
-sys.stdout = Logger(LOG_FILE)
-print(f"📝 로그 파일: {LOG_FILE}")
 
 # 강화 결과 분석 함수
 def check_enhancement_result(text):
