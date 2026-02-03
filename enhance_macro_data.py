@@ -3,7 +3,56 @@ import pyperclip
 import pygetwindow as gw
 import time
 import re
+import sys
+import os
+from datetime import datetime
 import enhance_db
+
+# 로그 파일 설정
+LOG_DIR = os.path.dirname(__file__)
+LOG_FILE = os.path.join(LOG_DIR, f"enhance_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+
+class Logger:
+    """print 출력을 콘솔과 파일에 동시에 기록 (100줄마다 파일 저장)"""
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.filename = filename
+        self.buffer = []
+        self.line_count = 0
+        self.FLUSH_INTERVAL = 100
+        
+    def write(self, message):
+        self.terminal.write(message)
+        self.buffer.append(message)
+        
+        # 줄바꿈 카운트
+        self.line_count += message.count('\n')
+        
+        # 100줄마다 파일에 저장
+        if self.line_count >= self.FLUSH_INTERVAL:
+            self._flush_to_file()
+        
+    def _flush_to_file(self):
+        if self.buffer:
+            with open(self.filename, 'a', encoding='utf-8') as f:
+                f.write(''.join(self.buffer))
+            self.buffer = []
+            self.line_count = 0
+        
+    def flush(self):
+        self.terminal.flush()
+        self._flush_to_file()
+
+import atexit
+# 프로그램 종료 시 남은 버퍼 저장
+def _save_remaining_log():
+    if isinstance(sys.stdout, Logger):
+        sys.stdout.flush()
+atexit.register(_save_remaining_log)
+
+# 로거 활성화
+sys.stdout = Logger(LOG_FILE)
+print(f"📝 로그 파일: {LOG_FILE}")
 
 # 강화 결과 분석 함수
 def check_enhancement_result(text):
@@ -73,14 +122,27 @@ def get_target_level_by_gold(gold):
         return 6
 
 
+# 창 찾기 실패 카운터
+_window_not_found_count = 0
+MAX_WINDOW_NOT_FOUND = 180
+
 def get_latest_message(target_window_title):
     """창에서 가장 최근 메시지를 가져오는 함수"""
+    global _window_not_found_count
     try:
         windows = gw.getWindowsWithTitle(target_window_title)
         
         if not windows:
-            print(f"오류: '{target_window_title}' 창을 찾을 수 없습니다.")
+            _window_not_found_count += 1
+            print(f"오류: '{target_window_title}' 창을 찾을 수 없습니다. ({_window_not_found_count}/{MAX_WINDOW_NOT_FOUND})")
+            
+            if _window_not_found_count >= MAX_WINDOW_NOT_FOUND:
+                print(f"\n❌ 창을 {MAX_WINDOW_NOT_FOUND}번 찾을 수 없어 프로그램을 종료합니다.")
+                sys.exit(1)
             return None
+        
+        # 창을 찾으면 카운터 리셋
+        _window_not_found_count = 0
 
         target_window = windows[0]
         
@@ -508,7 +570,28 @@ def run_enhance_macro(target_window_title, target_level=9, delay=1.0):
             # 골드에 따른 목표 레벨 업데이트
             target_level = get_target_level_by_gold(current_gold)
             current_level = 0
+        
+        elif "골드가 부족해" in result_text:
+            print(f"  💸 골드 부족! 현재 아이템 판매 후 재시도...")
             
+            # 현재 아이템 판매
+            send_sell_command(target_window_title)
+            time.sleep(delay)
+            sell_result = wait_for_bot_response(target_window_title)
+            
+            # 판매 결과에서 골드 파싱
+            gold = parse_gold_from_sell(sell_result)
+            if gold is not None:
+                current_gold = gold
+            
+            # 검/몽둥이 아닐 때까지 판매
+            _, current_gold = sell_until_good_item(target_window_title, delay, current_gold)
+            
+            # 골드에 따른 목표 레벨 업데이트  
+            target_level = get_target_level_by_gold(current_gold)
+            current_level = 0
+            print(f"  🔄 새 아이템으로 재시작! (목표: +{target_level}강)")
+        
         else:
             print(f"  ⚠️ 결과를 파악할 수 없습니다.")
             print(f"  [디버그] 받은 텍스트: {result_text[:200] if result_text else 'None'}...")
